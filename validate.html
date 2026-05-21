@@ -508,6 +508,14 @@ async function startValidation() {
   $('#trialPanel').style.display = 'none';
   $('#gridPanel').style.display = 'none';
 
+  // Show progress bar immediately for instant feedback
+  $('#progressWrap').classList.add('active');
+  $('#progressFill').classList.add('running');
+  $('#progressFill').style.width = '10%';
+  $('#progressLabel').textContent = '正在启动验证...';
+  $('#progressPct').textContent = '';
+  $('#progressWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
   try {
     const res = await fetch(API + '/analyzer/validate/run', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -515,11 +523,21 @@ async function startValidation() {
     });
     const data = await res.json();
     if (data.status === 'started' || data.status === 'already_running') {
-      $('#progressWrap').classList.add('active');
-      $('#progressFill').classList.add('running');
+      $('#progressLabel').textContent = '验证运行中...';
       startPolling();
+    } else {
+      $('#progressLabel').textContent = '启动失败: ' + (data.message || '未知错误');
+      $('#progressFill').classList.remove('running');
+      $('#progressFill').style.width = '0%';
+      resetBtn();
     }
-  } catch (e) { console.error(e); resetBtn(); }
+  } catch (e) {
+    console.error(e);
+    $('#progressLabel').textContent = '请求失败: ' + e.message;
+    $('#progressFill').classList.remove('running');
+    $('#progressFill').style.width = '0%';
+    resetBtn();
+  }
 }
 
 function getSelectedWeights() {
@@ -551,6 +569,9 @@ loadReports();
 function resetBtn() {
   $('#runBtn').classList.remove('loading');
   $('#runBtn').disabled = false;
+  // Clean up progress bar from previous run
+  $('#progressFill').classList.remove('running');
+  $('#progressFill').style.width = '0%';
 }
 
 function startPolling() {
@@ -595,12 +616,16 @@ function updateProgress(data) {
   if (data.running) {
     const scans = p.dates_scanned || 0;
     const trades = p.total_trades || 0;
-    label.textContent = `回测中 — ${scans} 个区间完成, ${trades} 笔交易`;
-    pct.textContent = `${scans} trials`;
-    fill.style.width = '25%'; // indeterminate
+    const cur = p.current_date || '';
+    let parts = [`${scans} 个区间完成`];
+    if (trades > 0) parts.push(`${trades} 笔交易`);
+    if (cur) parts.push(`当前: ${cur}`);
+    label.textContent = '验证运行中 — ' + parts.join(', ');
+    pct.textContent = scans > 0 ? `${scans} trials` : '';
+    fill.style.width = scans > 0 ? Math.min(90, 10 + scans * 5) + '%' : '20%';
   } else if (data.report) {
     const d = data.report.dates_scanned || 0;
-    label.textContent = `完成 — ${d} 个随机区间`;
+    label.textContent = '完成 — ' + d + ' 个随机区间';
     pct.textContent = '100%';
     fill.style.width = '100%';
   }
