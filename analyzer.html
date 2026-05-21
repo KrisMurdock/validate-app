@@ -123,6 +123,28 @@
     50% { opacity: 0.4; box-shadow: 0 0 12px var(--accent-amber); }
   }
 
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .nav-btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent-amber);
+    text-decoration: none;
+    border: 1px solid var(--accent-amber);
+    border-radius: var(--radius);
+    padding: 4px 12px;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .nav-btn:hover {
+    background: var(--accent-amber);
+    color: var(--bg-primary);
+  }
+
   /* Panel */
   .panel {
     background: var(--bg-panel);
@@ -425,7 +447,10 @@
       <h1><span>▶</span> Analyzer</h1>
       <span class="version">选股 &amp; 持仓分析</span>
     </div>
-    <div class="status-dot" id="statusDot">idle</div>
+    <div class="header-right">
+      <a href="/analyzer/validate" class="nav-btn">回测验证 →</a>
+      <span class="status-dot" id="statusDot">idle</span>
+    </div>
   </header>
 
   <!-- Control Panel -->
