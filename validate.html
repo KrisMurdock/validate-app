@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validate — 策略验证</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg-deep: #080a0e;
+    --bg: #0d1016;
+    --bg-card: #11151d;
+    --bg-input: #0a0d12;
+    --border: #1a1f2b;
+    --border-hover: #2a3040;
+    --text: #d0d4dc;
+    --text-dim: #6b7180;
+    --text-muted: #404860;
+    --amber: #c9953e;
+    --amber-dim: rgba(201, 149, 62, 0.12);
+    --green: #2d9d5a;
+    --green-dim: rgba(45, 157, 90, 0.12);
+    --red: #d94a4a;
+    --red-dim: rgba(217, 74, 74, 0.12);
+    --blue: #4a8ed9;
+    --font: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+    --sans: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --radius: 4px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.55;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(201,149,62,0.03) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .app { max-width: 1400px; margin: 0 auto; padding: 28px 36px; }
+
+  /* Header */
+  .header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--border);
+  }
+  .header h1 { font-family: var(--font); font-size: 17px; font-weight: 600; letter-spacing: 0.5px; }
+  .header h1 span { color: var(--amber); }
+  .header .nav { display: flex; gap: 18px; }
+  .header .nav a { color: var(--text-dim); text-decoration: none; font-family: var(--font); font-size: 12px; transition: color 0.15s; }
+  .header .nav a:hover { color: var(--text); }
+
+  /* Panel */
+  .panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    font-family: var(--font); font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-dim);
+  }
+  .panel-body { padding: 16px; }
+
+  /* Controls grid */
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr auto;
+    gap: 10px;
+    align-items: end;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field.wide { grid-column: span 2; }
+  .field label {
+    font-size: 10px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.8px; font-family: var(--font);
+  }
+  .field .hint { font-size: 10px; color: var(--text-muted); font-family: var(--font); }
+
+  input, select {
+    background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 7px 10px; font-family: var(--font); font-size: 12px;
+    outline: none; transition: border-color 0.15s;
+  }
+  input:focus, select:focus { border-color: var(--border-hover); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 22px; border: 1px solid var(--amber);
+    background: transparent; color: var(--amber);
+    font-family: var(--font); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+    border-radius: var(--radius); cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .btn:hover { background: var(--amber-dim); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; border-color: var(--border); color: var(--text-dim); }
+
+  .btn .spinner {
+    display: none; width: 12px; height: 12px; border: 2px solid var(--amber);
+    border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  .btn.loading .spinner { display: inline-block; }
+  .btn.loading .btn-text { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Progress bar */
+  .progress-wrap { display: none; margin-bottom: 14px; }
+  .progress-wrap.active { display: block; }
+
+  .progress-header {
+    display: flex; justify-content: space-between; margin-bottom: 4px;
+    font-family: var(--font); font-size: 11px; color: var(--text-dim);
+  }
+
+  .progress-track {
+    height: 4px; background: var(--bg-card); border-radius: 2px; overflow: hidden; border: 1px solid var(--border);
+  }
+  .progress-fill {
+    height: 100%; background: var(--amber); border-radius: 2px;
+    transition: width 0.5s ease; width: 0%;
+  }
+  .progress-fill.running {
+    background: linear-gradient(90deg, var(--amber) 0%, #e0b84c 50%, var(--amber) 100%);
+    background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: 0% 0; } }
+
+  /* KPI cards */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px; margin-bottom: 14px;
+  }
+  .kpi-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+  }
+  .kpi-card .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--font); }
+  .kpi-card .value { font-family: var(--font); font-size: 28px; font-weight: 700; margin-top: 4px; }
+  .kpi-card .sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; font-family: var(--font); }
+  .kpi-card.win .value { color: var(--green); }
+  .kpi-card.loss .value { color: var(--red); }
+  .kpi-card.neutral .value { color: var(--amber); }
+
+  /* Fail breakdown */
+  .breakdown { display: flex; gap: 16px; flex-wrap: wrap; }
+  .breakdown-item {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font); font-size: 12px;
+  }
+  .breakdown-bar {
+    width: 80px; height: 8px; background: var(--bg-input);
+    border-radius: 2px; overflow: hidden;
+  }
+  .breakdown-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+  .breakdown-fill.support { background: var(--red); }
+  .breakdown-fill.expire { background: var(--amber); }
+  .breakdown-fill.nodata { background: var(--text-muted); }
+
+  /* Monthly chart */
+  .monthly-grid {
+    display: flex; gap: 2px; align-items: flex-end;
+    height: 100px; padding: 4px 0;
+  }
+  .monthly-bar {
+    flex: 1; min-width: 8px; border-radius: 2px 2px 0 0;
+    transition: height 0.3s; position: relative;
+    cursor: pointer;
+  }
+  .monthly-bar:hover { opacity: 0.8; }
+  .monthly-bar .tooltip {
+    display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    background: var(--bg-card); border: 1px solid var(--border); padding: 4px 8px;
+    font-family: var(--font); font-size: 10px; white-space: nowrap; border-radius: 2px; z-index: 10;
+  }
+  .monthly-bar:hover .tooltip { display: block; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--font); font-size: 12px; }
+  thead th {
+    text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 500;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid var(--border);
+  }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: rgba(255,255,255,0.015); }
+  tbody tr { cursor: pointer; transition: background 0.1s; }
+  tbody tr.selected { background: rgba(201,149,62,0.06); border-left: 2px solid var(--amber); }
+
+  .empty {
+    text-align: center; padding: 40px 16px; color: var(--text-muted);
+    font-family: var(--font); font-size: 12px;
+  }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 2px; font-size: 10px; font-family: var(--font);
+  }
+  .badge.win { background: var(--green-dim); color: var(--green); }
+  .badge.loss { background: var(--red-dim); color: var(--red); }
+  .badge.neutral { background: var(--amber-dim); color: var(--amber); }
+
+  /* Expandable detail row */
+  .detail-row { display: none; }
+  .detail-row.open { display: table-row; }
+  .detail-row td { padding: 0; border-bottom: 1px solid var(--border); background: var(--bg-deep); }
+  .detail-content { padding: 16px 20px; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .dimension-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .dimension-table th, .dimension-table td {
+    padding: 3px 8px; font-family: var(--font); font-size: 11px; text-align: right;
+  }
+  .dimension-table th { color: var(--text-muted); font-weight: 400; text-align: left; }
+  .dimension-table td { color: var(--text); }
+
+  .sparkline { width: 100%; height: 60px; }
+  .sparkline line { stroke: var(--border); stroke-width: 1; }
+  .sparkline .price-line { fill: none; stroke: var(--amber); stroke-width: 1.5; }
+  .sparkline .entry-line { stroke: var(--blue); stroke-width: 1; stroke-dasharray: 3,2; }
+  .sparkline .sr-support { stroke: var(--green); stroke-width: 1; stroke-dasharray: 2,2; }
+  .sparkline .sr-resistance { stroke: var(--red); stroke-width: 1; stroke-dasharray: 2,2; }
+  .sparkline .exit-dot { fill: var(--amber); }
+
+  .toggle-icon { cursor: pointer; user-select: none; transition: transform 0.2s; display: inline-block; }
+  .toggle-icon.open { transform: rotate(90deg); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .app { padding: 12px; }
+    .controls { grid-template-columns: 1fr 1fr; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div>
+      <h1><span>⟳</span> Strategy Validator</h1>
+    </div>
+    <nav class="nav">
+      <a href="/analyzer">← 选股扫描</a>
+    </nav>
+  </header>
+
+  <!-- Config Panel -->
+  <div class="panel">
+    <div class="panel-header">Validation Config</div>
+    <div class="panel-body">
+      <div class="controls">
+        <div class="field">
+          <label>验证模式</label>
+          <select id="vMode" onchange="onModeChange()">
+            <option value="random">完整链路 (选股+S/R)</option>
+            <option value="sr_only">仅 S/R 参数</option>
+            <option value="grid">网格搜索</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>区间开始</label>
+          <input type="date" id="startDate" value="2024-01-01">
+        </div>
+        <div class="field">
+          <label>区间结束</label>
+          <input type="date" id="endDate" value="2024-12-31">
+        </div>
+        <div class="field">
+          <label>回测次数</label>
+          <input type="number" id="trials" value="10" min="1" max="100">
+        </div>
+        <div class="field">
+          <label>每次天数</label>
+          <input type="number" id="windowDays" value="30" min="10" max="90">
+        </div>
+        <div class="field" id="topNField">
+          <label>Top N 候选</label>
+          <input type="number" id="topN" value="20" min="5" max="100">
+        </div>
+        <div class="field">
+          <label>支撑突破阈值 %</label>
+          <input type="number" id="breakPct" value="3" min="1" max="10" step="0.5">
+        </div>
+        <div class="field" id="weightField" style="display:none">
+          <label>权重组合</label>
+          <select id="weightPreset" onchange="onWeightChange()">
+            <option value="equal">等权</option>
+            <option value="ma_heavy">均线偏重</option>
+            <option value="bollinger_heavy">布林偏重</option>
+            <option value="high_low_heavy">高低点偏重</option>
+            <option value="fibonacci_heavy">斐波偏重</option>
+            <option value="all">全部对比</option>
+          </select>
+        </div>
+        <div class="field" id="fineField" style="display:none">
+          <label>精细搜索</label>
+          <select id="fineMode">
+            <option value="">关闭</option>
+            <option value="0.2">步长 0.2 (~56组)</option>
+            <option value="0.25" selected>步长 0.25 (~35组)</option>
+          </select>
+        </div>
+        <div class="field wide">
+          <label>股票代码 <span class="hint" id="codesHint">(逗号分隔, 留空 = 全市场)</span></label>
+          <input type="text" id="codes" placeholder="000001.SZ,600036.SH,000858.SZ">
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button class="btn" id="runBtn" onclick="startValidation()">
+            <span class="btn-text" id="runBtnText">开始验证</span>
+            <span class="spinner"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-header">
+      <span id="progressLabel">等待开始...</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid" id="kpiGrid" style="display:none">
+    <div class="kpi-card win" id="kpiWinRate">
+      <div class="label">胜率</div>
+      <div class="value">—</div>
+      <div class="sub" id="kpiWinRateSub"></div>
+    </div>
+    <div class="kpi-card neutral" id="kpiAvgReturn">
+      <div class="label">平均收益</div>
+      <div class="value">—</div>
+      <div class="sub">全部交易均值</div>
+    </div>
+    <div class="kpi-card loss" id="kpiMaxDD">
+      <div class="label">最大回撤</div>
+      <div class="value">—</div>
+      <div class="sub">最差单笔</div>
+    </div>
+    <div class="kpi-card neutral" id="kpiFactor">
+      <div class="label">盈亏比</div>
+      <div class="value">—</div>
+      <div class="sub">总盈利/总亏损</div>
+    </div>
+  </div>
+
+  <!-- Failure Breakdown + Monthly Chart -->
+  <div class="panel" id="breakdownPanel" style="display:none">
+    <div class="panel-header">Failure Breakdown</div>
+    <div class="panel-body">
+      <div class="breakdown" id="breakdownBars"></div>
+    </div>
+  </div>
+
+  <!-- Grid Comparison -->
+  <div class="panel" id="gridPanel" style="display:none">
+    <div class="panel-header">权重对比</div>
+    <div class="panel-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>组合</th><th>MA</th><th>布林</th><th>高低点</th><th>斐波</th><th>胜率</th><th>平均收益</th><th>最大回撤</th><th>交易</th></tr></thead>
+          <tbody id="gridBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trial Details -->
+  <div class="panel" id="trialPanel" style="display:none">
+    <div class="panel-header">逐次回测明细 <span style="color:var(--text-muted);font-size:10px">(点击展开交易详情)</span></div>
+    <div class="panel-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:30px"></th><th>#</th><th>区间</th><th>交易</th><th>胜数</th><th>胜率</th><th>平均收益</th><th>最大回撤</th></tr></thead>
+          <tbody id="trialBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Previous Reports -->
+  <div class="panel">
+    <div class="panel-header">
+      <span>Saved Reports</span>
+      <button class="btn" style="font-size:10px;padding:4px 12px;" onclick="loadReports()">刷新</button>
+    </div>
+    <div class="panel-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>报告文件</th><th>周期</th><th>胜率</th><th>交易数</th><th>生成时间</th></tr></thead>
+          <tbody id="reportsBody">
+            <tr><td colspan="5" class="empty">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const API = '';
+
+let pollTimer = null;
+let currentReport = null;  // store for detail rendering
+
+// ---- Mode switching ----
+function onModeChange() {
+  const mode = $('#vMode').value;
+  const topN = $('#topNField');
+  const weight = $('#weightField');
+  const fine = $('#fineField');
+  const hint = $('#codesHint');
+  const btn = $('#runBtnText');
+
+  if (mode === 'sr_only') {
+    topN.style.display = 'none';
+    weight.style.display = '';
+    fine.style.display = 'none';
+    hint.textContent = '(必填)';
+    btn.textContent = 'S/R 验证';
+    $('#weightPreset').value = 'equal';
+  } else if (mode === 'grid') {
+    topN.style.display = 'none';
+    weight.style.display = '';
+    fine.style.display = '';
+    hint.textContent = '(必填, 可单只)';
+    btn.textContent = '网格搜索';
+    $('#weightPreset').value = 'all';
+  } else {
+    topN.style.display = '';
+    weight.style.display = 'none';
+    fine.style.display = 'none';
+    hint.textContent = '(逗号分隔, 留空 = 全市场)';
+    btn.textContent = '随机回测';
+  }
+}
+
+function onWeightChange() {
+  const mode = $('#vMode').value;
+  const fine = $('#fineField');
+  if (mode === 'grid' && $('#weightPreset').value === 'all') {
+    fine.style.display = '';
+  } else {
+    fine.style.display = 'none';
+  }
+}
+
+// ---- Validation ----
+async function startValidation() {
+  if (pollTimer) return;
+
+  const mode = $('#vMode').value;
+  const isGrid = mode === 'grid';
+  const isSrOnly = mode === 'sr_only' || isGrid;
+  const codesStr = $('#codes').value.trim();
+
+  if (isSrOnly && !codesStr) {
+    alert('S/R 模式和网格搜索必须填写股票代码');
+    return;
+  }
+
+  const body = {
+    start_date: $('#startDate').value || '2024-01-01',
+    end_date: $('#endDate').value || '2024-12-31',
+    mode: isGrid ? 'grid' : isSrOnly ? 'sr_only' : 'random',
+    trials: parseInt($('#trials').value) || 10,
+    window_days: parseInt($('#windowDays').value) || 30,
+    top_n: parseInt($('#topN').value) || 20,
+    support_break_pct: parseFloat($('#breakPct').value) || 3.0,
+    codes: codesStr ? codesStr.split(',').map(s => s.trim()).filter(Boolean) : null,
+    sr_only: isSrOnly,
+    grid_search: isGrid,
+  };
+
+  if (isSrOnly && !isGrid) {
+    body.sr_weights = getSelectedWeights();
+  }
+
+  if (isGrid) {
+    const fineMode = $('#fineMode').value;
+    if (fineMode) {
+      body.fine_grid = true;
+      body.fine_step = parseFloat(fineMode);
+    } else {
+      body.weight_grid = getGridWeights();
+    }
+  }
+
+  $('#runBtn').classList.add('loading');
+  $('#runBtn').disabled = true;
+  $('#kpiGrid').style.display = 'none';
+  $('#breakdownPanel').style.display = 'none';
+  $('#trialPanel').style.display = 'none';
+  $('#gridPanel').style.display = 'none';
+
+  try {
+    const res = await fetch(API + '/analyzer/validate/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.status === 'started' || data.status === 'already_running') {
+      $('#progressWrap').classList.add('active');
+      $('#progressFill').classList.add('running');
+      startPolling();
+    }
+  } catch (e) { console.error(e); resetBtn(); }
+}
+
+function getSelectedWeights() {
+  const presets = {
+    equal: { ma: 0.25, bollinger: 0.25, high_low: 0.25, fibonacci: 0.25 },
+    ma_heavy: { ma: 0.55, bollinger: 0.15, high_low: 0.15, fibonacci: 0.15 },
+    bollinger_heavy: { ma: 0.15, bollinger: 0.55, high_low: 0.15, fibonacci: 0.15 },
+    high_low_heavy: { ma: 0.15, bollinger: 0.15, high_low: 0.55, fibonacci: 0.15 },
+    fibonacci_heavy: { ma: 0.15, bollinger: 0.15, high_low: 0.15, fibonacci: 0.55 },
+  };
+  return presets[$('#weightPreset').value] || presets.equal;
+}
+
+function getGridWeights() {
+  const presets = {
+    equal: { ma: 0.25, bollinger: 0.25, high_low: 0.25, fibonacci: 0.25 },
+    ma_heavy: { ma: 0.55, bollinger: 0.15, high_low: 0.15, fibonacci: 0.15 },
+    bollinger_heavy: { ma: 0.15, bollinger: 0.55, high_low: 0.15, fibonacci: 0.15 },
+    high_low_heavy: { ma: 0.15, bollinger: 0.15, high_low: 0.55, fibonacci: 0.15 },
+    fibonacci_heavy: { ma: 0.15, bollinger: 0.15, high_low: 0.15, fibonacci: 0.55 },
+  };
+  const sel = $('#weightPreset').value;
+  if (sel === 'all') return Object.values(presets);
+  return [presets[sel]];
+}
+
+// ---- Init ----
+loadReports();
+function resetBtn() {
+  $('#runBtn').classList.remove('loading');
+  $('#runBtn').disabled = false;
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollStatus, 2000);
+  pollStatus();
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  resetBtn();
+}
+
+async function pollStatus() {
+  try {
+    const res = await fetch(API + '/analyzer/validate/status');
+    const data = await res.json();
+    updateProgress(data);
+
+    if (!data.running) {
+      stopPolling();
+      $('#progressFill').classList.remove('running');
+      if (data.report) {
+        renderReport(data.report);
+      }
+      loadReports();
+      // Keep progress at 100% for 5s
+      setTimeout(() => $('#progressWrap').classList.remove('active'), 5000);
+    }
+  } catch (e) {
+    stopPolling();
+  }
+}
+
+function updateProgress(data) {
+  const p = data.progress || {};
+  const wrap = $('#progressWrap');
+  const fill = $('#progressFill');
+  const label = $('#progressLabel');
+  const pct = $('#progressPct');
+
+  if (data.running) {
+    const scans = p.dates_scanned || 0;
+    const trades = p.total_trades || 0;
+    label.textContent = `回测中 — ${scans} 个区间完成, ${trades} 笔交易`;
+    pct.textContent = `${scans} trials`;
+    fill.style.width = '25%'; // indeterminate
+  } else if (data.report) {
+    const d = data.report.dates_scanned || 0;
+    label.textContent = `完成 — ${d} 个随机区间`;
+    pct.textContent = '100%';
+    fill.style.width = '100%';
+  }
+}
+
+function renderReport(r) {
+  if (!r || r.error) return;
+
+  // Grid mode: render comparison table
+  if (r.mode === 'grid_search' && r.grid) {
+    renderGrid(r);
+    return;
+  }
+
+  // Standard mode: render KPIs
+  $('#kpiGrid').style.display = '';
+
+  const wr = r.win_rate || 0;
+  const avgRet = r.avg_return_pct || 0;
+  const maxDD = r.avg_max_drawdown_pct || 0;
+  const total = r.total_trades || 0;
+
+  $('#kpiWinRate').querySelector('.value').textContent = wr + '%';
+  $('#kpiWinRate').querySelector('.sub').textContent = total + ' 笔交易';
+  $('#kpiWinRate').className = 'kpi-card ' + (wr >= 80 ? 'win' : wr >= 50 ? 'neutral' : 'loss');
+
+  $('#kpiAvgReturn').querySelector('.value').textContent = (avgRet >= 0 ? '+' : '') + avgRet + '%';
+  $('#kpiAvgReturn').className = 'kpi-card ' + (avgRet >= 0 ? 'win' : 'loss');
+
+  $('#kpiMaxDD').querySelector('.value').textContent = maxDD + '%';
+  $('#kpiMaxDD').className = 'kpi-card ' + (maxDD > -5 ? 'win' : 'loss');
+
+  $('#kpiFactor').querySelector('.value').textContent = r.profit_factor || '—';
+
+  // Failure breakdown
+  const fb = r.failure_breakdown || {};
+  const total = r.total_trades || 1;
+  const items = [
+    { key: 'support_break', label: '支撑跌破', cls: 'support', n: fb.support_break || 0 },
+    { key: 'time_expire_lose', label: '到期未涨', cls: 'expire', n: fb.time_expire_lose || 0 },
+    { key: 'no_data', label: '无数据', cls: 'nodata', n: fb.no_data || 0 },
+  ];
+
+  if (items.some(i => i.n > 0)) {
+    $('#breakdownPanel').style.display = '';
+    $('#breakdownBars').innerHTML = items.filter(i => i.n > 0).map(i =>
+      `<div class="breakdown-item">
+        <span>${i.label}</span>
+        <div class="breakdown-bar"><div class="breakdown-fill ${i.cls}" style="width:${Math.max(2, i.n/total*100)}%"></div></div>
+        <span>${i.n}</span>
+      </div>`
+    ).join('');
+  }
+
+  // Per-trial stats table
+  currentReport = r;
+  const trials = r.trial_stats || [];
+  const allTrades = r.trades || [];
+
+  if (trials.length > 0) {
+    $('#trialPanel').style.display = '';
+    $('#trialBody').innerHTML = trials.map((t, i) => {
+      const trialTrades = allTrades.filter(tr => tr.date === t.trial);
+      const detailId = `detail_${i}`;
+      return `
+      <tr onclick="toggleDetail('${detailId}', this)" style="cursor:pointer">
+        <td><span class="toggle-icon" id="${detailId}_icon">▶</span></td>
+        <td>${i+1}</td>
+        <td style="color:var(--blue)">${t.trial}</td>
+        <td>${t.trades}</td>
+        <td>${t.wins}</td>
+        <td><span class="badge ${t.win_rate >= 80 ? 'win' : 'neutral'}">${t.win_rate}%</span></td>
+        <td style="color:var(--green)">${t.avg_profit_pct}%</td>
+        <td style="color:var(--red)">${t.max_drawdown_pct}%</td>
+      </tr>
+      <tr class="detail-row" id="${detailId}">
+        <td colspan="8"><div class="detail-content">${renderTrialDetail(trialTrades)}</div></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function toggleDetail(id, row) {
+  const detail = document.getElementById(id);
+  const icon = document.getElementById(id + '_icon');
+  const isOpen = detail.classList.contains('open');
+  detail.classList.toggle('open');
+  icon.classList.toggle('open');
+}
+
+function renderTrialDetail(trades) {
+  if (!trades || trades.length === 0) return '<span style="color:var(--text-muted)">无交易数据</span>';
+
+  return trades.map((tr, i) => {
+    const dims = tr.dimension_sr || [];
+    const fwd = tr.forward_prices || [];
+    const sparkSVG = renderSparkline(fwd, tr.entry, tr.support, tr.resistance, tr.exit_price, tr.actual_high, tr.actual_low);
+
+    return `
+    <div style="margin-bottom:${i < trades.length-1 ? '20px' : '0'}; border-bottom:${i < trades.length-1 ? '1px solid var(--border)' : 'none'}; padding-bottom:${i < trades.length-1 ? '16px' : '0'}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <span style="font-family:var(--font);font-size:14px;color:var(--blue);font-weight:600">${tr.code}</span>
+        <span class="badge ${tr.outcome === 'WIN' ? 'win' : 'loss'}">${tr.outcome}</span>
+        <span style="font-family:var(--font);font-size:11px;color:var(--text-dim)">${tr.trigger}</span>
+        <span style="font-family:var(--font);font-size:11px;color:var(--text-muted)">持仓 ${tr.days_held}天</span>
+        <span style="font-family:var(--font);font-size:13px;color:${tr.profit_pct >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:600;margin-left:auto">
+          ${tr.profit_pct >= 0 ? '+' : ''}${tr.profit_pct}%
+        </span>
+      </div>
+      <div class="detail-grid">
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">价格走势</div>
+          ${sparkSVG}
+          <div style="display:flex;gap:16px;margin-top:4px;font-family:var(--font);font-size:10px">
+            <span>买入 <b style="color:var(--blue)">${tr.entry}</b></span>
+            <span>卖出 <b style="color:var(--amber)">${tr.exit_price}</b></span>
+            ${fwd.length > 0 ? `<span>区间 ${fwd[0].date} ~ ${fwd[fwd.length-1].date}</span>` : ''}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">维度支撑/压力</div>
+          <table class="dimension-table">
+            <thead><tr><th>维度</th><th>预测支撑</th><th>预测压力</th><th>权重</th></tr></thead>
+            <tbody>${dims.map(d =>
+              `<tr>
+                <td>${d.name}</td>
+                <td>${d.support.toFixed(2)}</td>
+                <td>${d.resistance.toFixed(2)}</td>
+                <td style="color:var(--text-muted)">${(d.weight*100).toFixed(0)}%</td>
+              </tr>`
+            ).join('')}
+            <tr style="border-top:1px solid var(--border);font-weight:600">
+              <td>加权预测</td>
+              <td style="color:var(--green)">${tr.support.toFixed(2)}</td>
+              <td style="color:var(--red)">${tr.resistance.toFixed(2)}</td>
+              <td></td>
+            </tr>
+            <tr style="border-top:2px solid var(--amber);font-weight:600">
+              <td style="color:var(--amber)">真实值</td>
+              <td style="color:var(--amber)">${(tr.actual_low || 0).toFixed(2)}</td>
+              <td style="color:var(--amber)">${(tr.actual_high || 0).toFixed(2)}</td>
+              <td style="color:var(--text-muted);font-size:10px">30日内</td>
+            </tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSparkline(prices, entry, support, resistance, exitPrice, actualHigh, actualLow) {
+  if (!prices || prices.length < 2) return '<div style="color:var(--text-muted);font-size:11px">无价格数据</div>';
+
+  const W = 500, H = 60, pad = { top: 8, right: 10, bottom: 16, left: 10 };
+  const pw = W - pad.left - pad.right;
+  const ph = H - pad.top - pad.bottom;
+
+  const allVals = prices.flatMap(p => [p.high, p.low]);
+  allVals.push(entry, exitPrice);
+  if (support) allVals.push(support);
+  if (resistance) allVals.push(resistance);
+  if (actualHigh) allVals.push(actualHigh);
+  if (actualLow) allVals.push(actualLow);
+  const min = Math.min(...allVals) * 0.995;
+  const max = Math.max(...allVals) * 1.005;
+  const range = max - min || 1;
+
+  const x = (i) => pad.left + (i / (prices.length - 1)) * pw;
+  const y = (v) => pad.top + (1 - (v - min) / range) * ph;
+
+  const closePath = prices.map((p, i) => `${i===0?'M':'L'}${x(i).toFixed(1)} ${y(p.close).toFixed(1)}`).join(' ');
+
+  // Candlestick wicks
+  const wicks = prices.map((p, i) =>
+    `<line x1="${x(i).toFixed(1)}" y1="${y(p.low).toFixed(1)}" x2="${x(i).toFixed(1)}" y2="${y(p.high).toFixed(1)}" stroke="#404860" stroke-width="1"/>`
+  ).join('');
+
+  // Candlestick bodies
+  const candles = prices.map((p, i) => {
+    const bodyH = Math.abs(y(p.open) - y(p.close));
+    const bodyY = Math.min(y(p.open), y(p.close));
+    const color = p.close >= p.open ? '#2d9d5a' : '#d94a4a';
+    const w = Math.max(1.5, pw / prices.length * 0.6);
+    return `<rect x="${(x(i)-w/2).toFixed(1)}" y="${bodyY.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(bodyH, 0.5).toFixed(1)}" fill="${color}" opacity="0.7"/>`;
+  }).join('');
+
+  return `
+  <svg class="sparkline" viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;background:var(--bg-input);border-radius:2px">
+    ${wicks}
+    ${candles}
+    <line x1="${pad.left}" y1="${y(entry).toFixed(1)}" x2="${pad.left+pw}" y2="${y(entry).toFixed(1)}" class="entry-line"/>
+    ${support ? `<line x1="${pad.left}" y1="${y(support).toFixed(1)}" x2="${pad.left+pw}" y2="${y(support).toFixed(1)}" class="sr-support"/>` : ''}
+    ${resistance ? `<line x1="${pad.left}" y1="${y(resistance).toFixed(1)}" x2="${pad.left+pw}" y2="${y(resistance).toFixed(1)}" class="sr-resistance"/>` : ''}
+    <circle cx="${x(prices.length-1).toFixed(1)}" cy="${y(exitPrice).toFixed(1)}" r="3" class="exit-dot"/>
+    <!-- Labels -->
+    <text x="${pad.left}" y="10" fill="#4a8ed9" font-size="9" font-family="var(--font)">买入 ${entry}</text>
+    ${support ? `<text x="${pad.left}" y="22" fill="#2d9d5a" font-size="9" font-family="var(--font)">支撑 ${support}</text>` : ''}
+    <text x="${pad.left+pw-60}" y="10" fill="#d94a4a" font-size="9" font-family="var(--font)" text-anchor="end">压力 ${resistance}</text>
+    ${actualLow ? `<line x1="${pad.left}" y1="${y(actualLow).toFixed(1)}" x2="${pad.left+pw}" y2="${y(actualLow).toFixed(1)}" stroke="#c9953e" stroke-width="1" stroke-dasharray="4,3"/>` : ''}
+    ${actualLow ? `<text x="${pad.left}" y="${Math.min(H-2, y(actualLow)+12).toFixed(0)}" fill="#c9953e" font-size="8" font-family="var(--font)">最低 ${actualLow}</text>` : ''}
+    ${actualHigh ? `<line x1="${pad.left}" y1="${y(actualHigh).toFixed(1)}" x2="${pad.left+pw}" y2="${y(actualHigh).toFixed(1)}" stroke="#c9953e" stroke-width="1" stroke-dasharray="4,3"/>` : ''}
+    ${actualHigh ? `<text x="${pad.left+pw}" y="${Math.max(10, y(actualHigh)-4).toFixed(0)}" fill="#c9953e" font-size="8" font-family="var(--font)" text-anchor="end">最高 ${actualHigh}</text>` : ''}
+  </svg>`;
+}
+
+function renderGrid(r) {
+  const grid = r.grid || [];
+  const best = r.best || {};
+
+  $('#gridPanel').style.display = '';
+
+  // Top KPI: show best
+  $('#kpiGrid').style.display = '';
+  const bwr = best.win_rate || 0;
+  const bRet = best.avg_return_pct || 0;
+  const bDD = best.avg_max_drawdown_pct || 0;
+
+  $('#kpiWinRate').querySelector('.value').textContent = bwr + '%';
+  $('#kpiWinRate').querySelector('.sub').textContent = '最佳: ' + (best.name || '?');
+  $('#kpiWinRate').className = 'kpi-card ' + (bwr >= 80 ? 'win' : bwr >= 50 ? 'neutral' : 'loss');
+
+  $('#kpiAvgReturn').querySelector('.value').textContent = (bRet >= 0 ? '+' : '') + bRet + '%';
+  $('#kpiAvgReturn').className = 'kpi-card ' + (bRet >= 0 ? 'win' : 'loss');
+
+  $('#kpiMaxDD').querySelector('.value').textContent = bDD + '%';
+  $('#kpiMaxDD').className = 'kpi-card ' + (bDD > -5 ? 'win' : 'loss');
+
+  $('#kpiFactor').querySelector('.value').textContent = best.profit_factor || '—';
+
+  // Grid comparison table
+  let gridSelectedIdx = -1;
+  $('#gridBody').innerHTML = grid.map((g, gi) => {
+    const isBest = g.name === best.name;
+    const selClass = isBest ? 'selected' : '';
+    if (isBest) gridSelectedIdx = gi;
+    return `<tr class="${selClass}" style="cursor:pointer;${isBest ? 'font-weight:600' : ''}" onclick="showGridTrades(${gi})">
+      <td>${g.name} ${isBest ? '★' : ''}</td>
+      <td>${(g.weights.ma*100).toFixed(0)}%</td>
+      <td>${(g.weights.bollinger*100).toFixed(0)}%</td>
+      <td>${(g.weights.high_low*100).toFixed(0)}%</td>
+      <td>${(g.weights.fibonacci*100).toFixed(0)}%</td>
+      <td><span class="badge ${g.win_rate >= 80 ? 'win' : 'neutral'}">${g.win_rate}%</span></td>
+      <td style="color:${g.avg_return_pct >= 0 ? 'var(--green)' : 'var(--red)'}">${g.avg_return_pct >= 0 ? '+' : ''}${g.avg_return_pct}%</td>
+      <td style="color:var(--red)">${g.avg_max_drawdown_pct}%</td>
+      <td>${g.total_trades}</td>
+    </tr>`;
+  }).join('');
+
+  // Show best combo's trial details
+  if (gridSelectedIdx >= 0) {
+    currentReport = grid[gridSelectedIdx];
+    showGridTrialDetails(grid[gridSelectedIdx]);
+  }
+}
+
+// ---- Reports List ----
+async function loadReports() {
+  try {
+    const res = await fetch(API + '/analyzer/validate/reports');
+    const data = await res.json();
+    const reports = data.reports || [];
+    if (reports.length === 0) {
+      $('#reportsBody').innerHTML = '<tr><td colspan="5" class="empty">暂无报告</td></tr>';
+    } else {
+      $('#reportsBody').innerHTML = reports.map((r, i) =>
+        `<tr onclick="loadReport('${r.filename}')" class="${i === 0 ? 'selected' : ''}">
+          <td style="color:var(--blue)">${r.filename}</td>
+          <td>${r.period ? r.period.start + ' ~ ' + r.period.end : '—'}</td>
+          <td><span class="badge ${r.win_rate >= 80 ? 'win' : 'neutral'}">${r.win_rate || '—'}%</span></td>
+          <td>${r.total_trades || '—'}</td>
+          <td>${r.generated_at ? new Date(r.generated_at).toLocaleString('zh-CN',{hour12:false}) : '—'}</td>
+        </tr>`
+      ).join('');
+    }
+  } catch (e) {
+    $('#reportsBody').innerHTML = '<tr><td colspan="5" class="empty">加载失败</td></tr>';
+  }
+}
+
+function showGridTrades(idx) {
+  const grid = (currentReport && currentReport.mode === 'grid_search')
+    ? currentReport.grid : (currentReport && currentReport.grid ? currentReport.grid : []);
+  if (idx < 0 || idx >= grid.length) return;
+  const g = grid[idx];
+  // Highlight selected row
+  document.querySelectorAll('#gridBody tr').forEach((tr, i) => {
+    tr.classList.toggle('selected', i === idx);
+  });
+  showGridTrialDetails(g);
+}
+
+function showGridTrialDetails(g) {
+  if (!g.trial_stats || g.trial_stats.length === 0) {
+    $('#trialPanel').style.display = 'none';
+    return;
+  }
+  // Show trials from this grid entry
+  const allTrades = g.trades || [];
+  $('#trialPanel').style.display = '';
+  $('#trialBody').innerHTML = g.trial_stats.map((t, i) => {
+    const trialTrades = allTrades.filter(tr => tr.date === t.trial);
+    const detailId = `gdetail_${i}`;
+    return `
+    <tr onclick="toggleDetail('${detailId}', this)" style="cursor:pointer">
+      <td><span class="toggle-icon" id="${detailId}_icon">▶</span></td>
+      <td>${i+1}</td>
+      <td style="color:var(--blue)">${t.trial}</td>
+      <td>${t.trades}</td>
+      <td>${t.wins}</td>
+      <td><span class="badge ${t.win_rate >= 80 ? 'win' : 'neutral'}">${t.win_rate}%</span></td>
+      <td style="color:var(--green)">${t.avg_profit_pct}%</td>
+      <td style="color:var(--red)">${t.max_drawdown_pct}%</td>
+    </tr>
+    <tr class="detail-row" id="${detailId}">
+      <td colspan="8"><div class="detail-content">${renderTrialDetail(trialTrades)}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadReport(filename) {
+  try {
+    const res = await fetch(API + '/analyzer/validate/reports/' + encodeURIComponent(filename));
+    const report = await res.json();
+    renderReport(report);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    console.error(e);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "data_provider": {
+    "source": "duckdb",
+    "duckdb_path": "data/quantifydata.duckdb"
+  },
+  "analyzer": {
+    "enabled": true,
+    "top_n": 50,
+    "strategies": ["demo_ma_trend", "screening_v1"],
+    "data": {
+      "daily_lookback_days": 750,
+      "minute_lookback_days": 60,
+      "fundamental_enabled": false
+    },
+    "sr_weights": {
+      "ma": 0.25,
+      "bollinger": 0.25,
+      "high_low": 0.25,
+      "fibonacci": 0.25
+    },
+    "validator": {
+      "start_date": "2021-01-01",
+      "end_date": "2026-05-21",
+      "frequency_days": 7,
+      "forward_window_days": 30,
+      "top_n_candidates": 30
+    }
+  }
+}

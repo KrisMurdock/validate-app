@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyzer — 选股分析</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg-primary: #0a0c10;
+    --bg-panel: #111318;
+    --bg-card: #161920;
+    --bg-input: #0d0f14;
+    --border: #1e222a;
+    --border-active: #2a3040;
+    --text-primary: #dde0e8;
+    --text-secondary: #7c8294;
+    --text-muted: #4a5060;
+    --accent-amber: #c9953e;
+    --accent-green: #2d9d5a;
+    --accent-red: #d94a4a;
+    --accent-blue: #4a8ed9;
+    --status-idle: #4a5060;
+    --status-running: #c9953e;
+    --status-error: #d94a4a;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+    --font-sans: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --radius: 4px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Background texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.002) 2px, rgba(255,255,255,0.002) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .app {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 32px 40px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+
+  .header h1 {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: 0.5px;
+  }
+
+  .header h1 span {
+    color: var(--accent-amber);
+  }
+
+  .header .version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .status-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .status-dot::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--status-idle);
+  }
+
+  .status-dot.running::before {
+    background: var(--status-running);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .status-dot.error::before {
+    background: var(--status-error);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--accent-amber); }
+    50% { opacity: 0.4; box-shadow: 0 0 12px var(--accent-amber); }
+  }
+
+  /* Panel */
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+  }
+
+  .panel-body {
+    padding: 16px;
+  }
+
+  /* Controls */
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 12px;
+    align-items: end;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+
+  .field label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-family: var(--font-mono);
+  }
+
+  select, textarea {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  select:focus, textarea:focus { border-color: var(--border-active); }
+
+  textarea {
+    resize: vertical;
+    min-height: 62px;
+  }
+
+  textarea::placeholder { color: var(--text-muted); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 20px;
+    border: 1px solid var(--accent-amber);
+    background: transparent;
+    color: var(--accent-amber);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: rgba(201, 149, 62, 0.1); }
+  .btn:active { background: rgba(201, 149, 62, 0.2); }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
+
+  .btn .spinner {
+    display: none;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--accent-amber);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .btn.loading .spinner { display: inline-block; }
+  .btn.loading .btn-text { display: none; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    gap: 24px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 10px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+  }
+
+  .status-bar .stat {
+    display: flex;
+    gap: 6px;
+  }
+
+  .status-bar .stat-key { color: var(--text-muted); }
+  .status-bar .stat-val { color: var(--text-primary); font-weight: 500; }
+
+  /* Progress bar */
+  .progress-wrap {
+    margin-bottom: 16px;
+    display: none;
+  }
+  .progress-wrap.active { display: block; }
+
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .progress-track {
+    height: 4px;
+    background: var(--bg-card);
+    border-radius: 2px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent-amber);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
+  .progress-fill.running {
+    background: linear-gradient(90deg, var(--accent-amber) 0%, #e0b84c 50%, var(--accent-amber) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: 0% 0; }
+  }
+
+  /* Results summary */
+  .results-summary {
+    padding: 8px 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .results-summary .highlight { color: var(--accent-amber); font-weight: 600; }
+
+  .error-banner {
+    background: rgba(217, 74, 74, 0.08);
+    border: 1px solid rgba(217, 74, 74, 0.2);
+    color: var(--accent-red);
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* Strategy list */
+  .strategy-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .strategy-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .strategy-card:hover { border-color: var(--border-active); }
+  .strategy-card.selected { border-color: var(--accent-amber); background: rgba(201, 149, 62, 0.04); }
+
+  .strategy-card .name {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+
+  .strategy-card .meta {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .strategy-card .meta span { color: var(--text-secondary); }
+
+  /* Results table */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  thead th {
+    text-align: left;
+    padding: 10px 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody tr { transition: background 0.1s; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  .code { color: var(--accent-blue); font-weight: 500; }
+  .score { color: var(--accent-amber); font-weight: 600; font-size: 14px; }
+  .score.low { color: var(--text-muted); }
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    background: rgba(201, 149, 62, 0.12);
+    color: var(--accent-amber);
+    margin-right: 4px;
+  }
+  .risk-low { color: var(--accent-green); }
+  .risk-medium { color: var(--accent-amber); }
+  .risk-high { color: var(--accent-red); }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 16px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  .empty-state .icon { font-size: 32px; margin-bottom: 12px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .app { padding: 16px; }
+    .controls { grid-template-columns: 1fr; }
+    .header { flex-direction: column; gap: 8px; }
+    .header-left { flex-direction: column; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="header-left">
+      <h1><span>▶</span> Analyzer</h1>
+      <span class="version">选股 &amp; 持仓分析</span>
+    </div>
+    <div class="status-dot" id="statusDot">idle</div>
+  </header>
+
+  <!-- Control Panel -->
+  <div class="panel">
+    <div class="panel-header">Scan Configuration</div>
+    <div class="panel-body">
+      <div class="controls">
+        <div class="field">
+          <label>选股策略</label>
+          <select id="strategySelect">
+            <option value="">-- 加载中 --</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>股票代码 (每行一个, 留空 = 全市场)</label>
+          <textarea id="codesInput" placeholder="000001.SZ&#10;600036.SH&#10;000858.SZ" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button class="btn" id="runBtn" onclick="runScan()">
+            <span class="btn-text">执行扫描</span>
+            <span class="spinner"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="statusBar">
+    <div class="stat"><span class="stat-key">状态</span><span class="stat-val" id="statStatus">—</span></div>
+    <div class="stat"><span class="stat-key">上次运行</span><span class="stat-val" id="statLastRun">—</span></div>
+    <div class="stat"><span class="stat-key">报告数</span><span class="stat-val" id="statCount">—</span></div>
+  </div>
+
+  <!-- Progress Bar -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-header">
+      <span id="progressLabel">扫描中...</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- Error Banner -->
+  <div class="error-banner" id="errorBanner" style="display:none"></div>
+
+  <!-- Results -->
+  <div class="panel">
+    <div class="panel-header">
+      <span>Scan Results</span>
+      <span id="resultCount">—</span>
+    </div>
+    <div class="panel-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>得分</th>
+              <th>标签</th>
+              <th>止损</th>
+              <th>止盈</th>
+              <th>仓位%</th>
+              <th>支撑</th>
+              <th>压力</th>
+              <th>波动率</th>
+              <th>风险</th>
+              <th>置信度</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr><td colspan="11" class="empty-state"><div class="icon">⊡</div>执行扫描以查看结果</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const API = '';
+
+let pollTimer = null;
+let strategies = [];
+
+// ---- Init ----
+async function init() {
+  await loadStrategies();
+  await refreshStatus();
+}
+
+async function loadStrategies() {
+  try {
+    const res = await fetch(API + '/analyzer/strategies');
+    const data = await res.json();
+    strategies = data;
+    const sel = $('#strategySelect');
+    sel.innerHTML = strategies.length
+      ? strategies.map((s, i) =>
+          `<option value="${s.strategy_id}" ${i === 0 ? 'selected' : ''}>
+            ${s.name} — ${s.scoring_mode} (阈值: ${s.pass_threshold}, 规则: ${s.rule_count})
+          </option>`).join('')
+      : '<option value="">-- 暂无策略 --</option>';
+  } catch (e) {
+    $('#strategySelect').innerHTML = '<option value="">-- 加载失败 --</option>';
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch(API + '/analyzer/status');
+    const data = await res.json();
+    updateStatusUI(data);
+  } catch (e) { /* silent */ }
+}
+
+function updateStatusUI(data) {
+  const dot = $('#statusDot');
+  dot.textContent = data.status;
+  dot.className = 'status-dot ' + (data.status === 'running' ? 'running' : data.status === 'error' ? 'error' : '');
+
+  $('#statStatus').textContent = data.status;
+  $('#statLastRun').textContent = data.last_run_at
+    ? new Date(data.last_run_at).toLocaleString('zh-CN', { hour12: false })
+    : '—';
+  $('#statCount').textContent = data.last_report_count ?? '—';
+
+  // Progress bar
+  const wrap = $('#progressWrap');
+  const fill = $('#progressFill');
+  const pct = $('#progressPct');
+  const label = $('#progressLabel');
+  const total = data.total_codes || 0;
+  const done = data.processed_codes || 0;
+
+  if (data.status === 'running' && total > 0) {
+    wrap.classList.add('active');
+    fill.classList.add('running');
+    const pctVal = Math.round((done / total) * 100);
+    fill.style.width = pctVal + '%';
+    pct.textContent = pctVal + '%';
+    label.textContent = `扫描中 ${done.toLocaleString()} / ${total.toLocaleString()}`;
+  } else if (data.status === 'idle' && done >= total && total > 0) {
+    // Just finished — show 100% briefly
+    wrap.classList.add('active');
+    fill.classList.remove('running');
+    fill.style.width = '100%';
+    pct.textContent = '100%';
+    label.textContent = `完成 ${total.toLocaleString()} 只股票`;
+    setTimeout(() => { wrap.classList.remove('active'); }, 3000);
+  } else {
+    wrap.classList.remove('active');
+    fill.classList.remove('running');
+    fill.style.width = '0%';
+  }
+
+  if (data.last_error) {
+    const banner = $('#errorBanner');
+    banner.textContent = 'ERROR: ' + data.last_error;
+    banner.style.display = '';
+  }
+}
+
+// ---- Run Scan ----
+async function runScan() {
+  const btn = $('#runBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  $('#errorBanner').style.display = 'none';
+
+  const strategyId = $('#strategySelect').value;
+  if (!strategyId) { resetBtn(); return; }
+
+  const rawCodes = $('#codesInput').value.trim();
+  const codes = rawCodes
+    ? rawCodes.split('\n').map(s => s.trim()).filter(Boolean)
+    : null;
+
+  try {
+    const res = await fetch(API + '/analyzer/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codes }),
+    });
+    const data = await res.json();
+
+    // Start polling if running
+    if (data.status === 'running') {
+      startPolling();
+    } else {
+      stopPolling();
+      await refreshStatus();
+    }
+
+    $('#resultCount').textContent = `${data.report_count} 个结果`;
+
+    // For now, reports endpoint is a stub; show summary
+    if (data.report_count === 0 && data.status !== 'running') {
+      $('#resultsBody').innerHTML =
+        '<tr><td colspan="11" class="empty-state"><div class="icon">⊙</div>无结果 — 没有股票通过当前策略筛选</td></tr>';
+    }
+
+    if (data.error) {
+      $('#errorBanner').textContent = 'ERROR: ' + data.error;
+      $('#errorBanner').style.display = '';
+    }
+  } catch (e) {
+    $('#errorBanner').textContent = '请求失败: ' + e.message;
+    $('#errorBanner').style.display = '';
+  } finally {
+    resetBtn();
+  }
+}
+
+function resetBtn() {
+  const btn = $('#runBtn');
+  btn.classList.remove('loading');
+  btn.disabled = false;
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    await refreshStatus();
+    const status = $('#statStatus').textContent;
+    if (status !== 'running') stopPolling();
+  }, 2000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  refreshStatus();
+}
+
+// ---- Boot ----
+init();
+setInterval(refreshStatus, 15000); // background refresh every 15s
+</script>
+</body>
+</html>
