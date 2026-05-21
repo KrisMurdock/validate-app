@@ -2,6 +2,7 @@
 """Stock Analyzer — screening & backtesting web service."""
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.analyzer.api.routes import create_router
@@ -12,6 +13,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 engine = AnalysisEngine.from_config()
 app.include_router(create_router(engine))
+
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/analyzer")
 
 if __name__ == "__main__":
     import uvicorn
